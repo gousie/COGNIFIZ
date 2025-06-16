@@ -1,0 +1,85 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import chi2_contingency
+
+df = pd.read_csv('Railway_info.csv')
+df['Source_Station_Name'] = df['Source_Station_Name'].fillna('UNKNOWN').str.upper().str.strip()
+df['Destination_Station_Name'] = df['Destination_Station_Name'].fillna('UNKNOWN').str.upper().str.strip()
+df['days'] = df['days'].fillna('UNKNOWN').str.upper().str.strip()
+df['Train_Name'] = df['Train_Name'].fillna('UNKNOWN').str.upper().str.strip()
+df['day_category'] = df['days'].apply(lambda x: 'Weekend' if x in ['Saturday', 'Sunday'] else 'Weekday')
+
+print("=== Railway Dataset Analysis Report ===")
+print("\n1. Data Overview")
+print(f"Total number of trains: {len(df)}")
+print(f"Unique source stations: {len(df['Source_Station_Name'].unique())}")
+print(f"Unique destination stations: {len(df['Destination_Station_Name'].unique())}")
+print(f"Most common source station: {df['Source_Station_Name'].value_counts().idxmax()} ({df['Source_Station_Name'].value_counts().max()} trains)")
+print(f"Most common destination station: {df['Destination_Station_Name'].value_counts().idxmax()} ({df['Destination_Station_Name'].value_counts().max()} trains)")
+print("\nMissing Values Check:")
+print(df.isnull().sum())
+
+print("\n2. Train Distribution by Day")
+day_counts = df['days'].value_counts().reindex(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], fill_value=0)
+print(day_counts)
+
+print("\n3. Top 10 Routes by Frequency")
+source_dest_counts = df.groupby(['Source_Station_Name', 'Destination_Station_Name']).size().reset_index(name='trip_count')
+print(source_dest_counts.sort_values(by='trip_count', ascending=False).head(10))
+
+print("\n4. Busy Stations Analysis")
+source_counts = df.groupby('Source_Station_Name').size().reset_index(name='train_count')
+busy_stations = source_counts[source_counts['train_count'] > source_counts['train_count'].quantile(0.75)]
+busy_station_days = df[df['Source_Station_Name'].isin(busy_stations['Source_Station_Name'])].groupby(['Source_Station_Name', 'days']).size().unstack(fill_value=0)
+print(busy_station_days)
+
+print("\n5. Correlation Analysis")
+contingency_table = pd.crosstab(df['days'], df['Train_Name'])
+chi2, p_value, _, _ = chi2_contingency(contingency_table)
+print(f"Chi-square statistic: {chi2}")
+print(f"P-value: {p_value}")
+print("Interpretation: " + ("Significant association between train operations and days (p < 0.05)" if p_value < 0.05 else "No significant association (p >= 0.05)"))
+
+plt.figure(figsize=(10, 6))
+plt.bar(day_counts.index, day_counts.values, color='#1f77b4')
+plt.xlabel('Day of the Week')
+plt.ylabel('Number of Trains')
+plt.title('Number of Trains per Day')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.savefig('trains_per_day.png')
+plt.close()
+
+source_counts_top10 = source_counts.sort_values(by='train_count', ascending=False).head(10)
+plt.figure(figsize=(10, 6))
+plt.plot(source_counts_top10['Source_Station_Name'], source_counts_top10['train_count'], marker='o', color='#ff7f0e')
+plt.xlabel('Source Station')
+plt.ylabel('Number of Trains')
+plt.title('Top 10 Source Stations by Number of Trains')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.savefig('top_source_stations.png')
+plt.close()
+
+source_day_pivot = df.pivot_table(index='Source_Station_Name', columns='days', aggfunc='size', fill_value=0)
+top_stations_pivot = source_day_pivot.loc[source_counts_top10['Source_Station_Name']]
+plt.figure(figsize=(12, 8))
+sns.heatmap(top_stations_pivot, cmap='Blues', annot=True, fmt='d')
+plt.title('Train Distribution by Day for Top 10 Source Stations')
+plt.xlabel('Day of the Week')
+plt.ylabel('Source Station')
+plt.tight_layout()
+plt.savefig('station_day_heatmap.png')
+plt.close()
+
+print("\n6. Insights and Recommendations")
+print("- High train counts on specific days suggest demand peaks (e.g., weekends for leisure travel).")
+print("- Busy stations (top 25% by train count) show consistent or day-specific activity, indicating major hubs or event-driven routes.")
+print("- If p-value < 0.05, train schedules are tied to specific days, suggesting structured operations (e.g., more commuter trains on weekdays).")
+print("- Recommendations:")
+print("  - Increase capacity on high-demand days (e.g., weekends) with additional trains.")
+print("  - Optimize schedules at busy stations to reduce congestion, especially on peak days.")
+print("  - For low-activity stations, consider promotional trains or route adjustments to balance operations.")
+print("  - Analyze train types (express vs. local) to align schedules with passenger needs.")
+print("\nVisualizations saved as: 'trains_per_day.png', 'top_source_stations.png', 'station_day_heatmap.png'")
